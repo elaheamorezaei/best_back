@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -6,6 +7,21 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from admin_api.permissions import IsAdminUser
 from blog.models import BlogPost, BlogCategory
 from core.responses import build_absolute_image_url
+
+
+def _extract_image_path(url):
+    """Convert absolute media URL to relative path for ImageField."""
+    if not url:
+        return None
+    media_url = settings.MEDIA_URL  # e.g. '/media/'
+    # strip scheme+host: http://localhost:8000/media/blog/x.jpg → /media/blog/x.jpg
+    for prefix in ['http://', 'https://']:
+        if url.startswith(prefix):
+            url = '/' + url.split('/', 3)[-1]
+            break
+    if url.startswith(media_url):
+        return url[len(media_url):]
+    return None
 
 
 def _serialize_post(post, request):
@@ -76,8 +92,15 @@ class AdminBlogListView(APIView):
         slug = data.get('slug', '').strip()
         content = data.get('content', '').strip()
 
-        if not title or not slug or not content:
-            return Response({'error': {'message': 'عنوان، slug و محتوا الزامی است', 'code': 'MISSING_FIELDS'}}, status=400)
+        missing = []
+        if not title:
+            missing.append('title')
+        if not slug:
+            missing.append('slug')
+        if not content:
+            missing.append('content')
+        if missing:
+            return Response({'error': {'message': f'فیلدهای الزامی خالی است: {", ".join(missing)}', 'code': 'MISSING_FIELDS', 'fields': missing}}, status=400)
 
         if BlogPost.objects.filter(slug=slug).exists():
             return Response({'error': {'message': 'slug تکراری است', 'code': 'DUPLICATE_SLUG'}}, status=409)
@@ -110,9 +133,13 @@ class AdminBlogListView(APIView):
                 tags = []
         post.tags = tags
 
-        if 'image' not in request.FILES:
-            return Response({'error': {'message': 'تصویر مقاله الزامی است', 'code': 'MISSING_IMAGE'}}, status=400)
-        post.image = request.FILES['image']
+        if 'image' in request.FILES:
+            post.image = request.FILES['image']
+        elif data.get('coverImage'):
+            relative = _extract_image_path(str(data['coverImage']))
+            if relative:
+                post.image = relative
+
         post.save()
 
         return Response(_serialize_post(post, request), status=201)
@@ -170,6 +197,11 @@ class AdminBlogDetailView(APIView):
         if 'image' in request.FILES:
             post.image = request.FILES['image']
             update_fields.append('image')
+        elif data.get('coverImage'):
+            relative = _extract_image_path(str(data['coverImage']))
+            if relative:
+                post.image = relative
+                update_fields.append('image')
 
         if update_fields:
             post.save(update_fields=update_fields)
