@@ -44,7 +44,10 @@ class AdminBlogListView(APIView):
 
         category_id = request.query_params.get('categoryId')
         if category_id:
-            qs = qs.filter(category_id=category_id)
+            try:
+                qs = qs.filter(category_id=int(category_id))
+            except (ValueError, TypeError):
+                pass
 
         search = request.query_params.get('search', '').strip()
         if search:
@@ -95,7 +98,7 @@ class AdminBlogListView(APIView):
         if category_id:
             try:
                 post.category = BlogCategory.objects.get(pk=category_id)
-            except BlogCategory.DoesNotExist:
+            except (BlogCategory.DoesNotExist, ValueError, TypeError):
                 pass
 
         import json
@@ -161,7 +164,7 @@ class AdminBlogDetailView(APIView):
                 try:
                     post.category = BlogCategory.objects.get(pk=cid)
                     update_fields.append('category')
-                except BlogCategory.DoesNotExist:
+                except (BlogCategory.DoesNotExist, ValueError, TypeError):
                     pass
 
         if 'image' in request.FILES:
