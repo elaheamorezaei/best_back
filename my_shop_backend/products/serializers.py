@@ -49,7 +49,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['id', 'image', 'name', 'model', 'star', 'price', 'off', 'final_price']
+        fields = ['id', 'slug', 'image', 'name', 'model', 'star', 'price', 'off', 'final_price']
 
     def get_image(self, obj):
         return build_absolute_image_url(self.context.get('request'), obj.image)
@@ -76,10 +76,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'model', 'brand', 'star', 'reviewCount',
-            'inStock', 'selectedColor', 'images', 'price', 'off',
-            'colors', 'warranties', 'features', 'intro', 'specs',
-            'review', 'isInWishlist', 'isNotifyRequested',
+            'id', 'slug', 'name', 'model', 'brand', 'short_description',
+            'star', 'reviewCount', 'inStock', 'selectedColor', 'images',
+            'price', 'off', 'colors', 'warranties', 'features', 'intro',
+            'specs', 'review', 'isInWishlist', 'isNotifyRequested',
         ]
 
     def get_images(self, obj):
@@ -144,7 +144,7 @@ class SimilarProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'model', 'image', 'star', 'price', 'off', 'colors']
+        fields = ['id', 'slug', 'name', 'model', 'image', 'star', 'price', 'off', 'colors']
 
     def get_image(self, obj):
         request = self.context.get('request')
@@ -165,7 +165,7 @@ class ProductCompareSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'model', 'image', 'price', 'off', 'star', 'specs']
+        fields = ['id', 'slug', 'name', 'model', 'image', 'price', 'off', 'star', 'specs']
 
     def get_image(self, obj):
         request = self.context.get('request')

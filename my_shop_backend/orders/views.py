@@ -414,15 +414,17 @@ class ProfileOrderListView(APIView):
         order_list = []
         for row_idx, order in enumerate(orders, start=(page - 1) * limit + 1):
             status_int, status_label = _STATUS_INT_MAP.get(order.status, (1, order.status))
-            items = [
-                {
+            items = []
+            for item in order.items.all():
+                image_url = item.product_image or None
+                if image_url and not image_url.startswith('http'):
+                    image_url = request.build_absolute_uri(image_url)
+                items.append({
                     'productId': item.product_id,
                     'name': item.product_name,
-                    'image': item.product_image or None,
+                    'image': image_url,
                     'quantity': item.quantity,
-                }
-                for item in order.items.all()
-            ]
+                })
             order_list.append({
                 'id': order.id,
                 'row': row_idx,
@@ -460,10 +462,13 @@ class ProfileOrderDetailView(APIView):
 
         items = []
         for item in order.items.all():
+            image_url = item.product_image or None
+            if image_url and not image_url.startswith('http'):
+                image_url = request.build_absolute_uri(image_url)
             items.append({
                 'productId': item.product_id,
                 'name': item.product_name,
-                'image': item.product_image or None,
+                'image': image_url,
                 'color': item.color_name or None,
                 'guarantee': item.guarantee_text or None,
                 'quantity': item.quantity,
@@ -478,6 +483,7 @@ class ProfileOrderDetailView(APIView):
             'postalCode': snapshot.get('postalCode', ''),
             'receiverName': snapshot.get('receiverName', ''),
             'phoneNumber': snapshot.get('phoneNumber', ''),
+            'receiverPhone': snapshot.get('receiverPhone', ''),
         }
 
         delivery_data = {

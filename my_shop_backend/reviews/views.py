@@ -52,7 +52,7 @@ class CommentsView(APIView):
 
         qs = (
             Comment.objects
-            .filter(product_id=product_id)
+            .filter(product_id=product_id, is_approved=True)
             .prefetch_related('images', 'votes')
             .select_related('user')
         )
@@ -69,8 +69,8 @@ class CommentsView(APIView):
         items, total, pagination = _paginate(qs, page, limit)
         pagination['totalCount'] = total
 
-        # Summary always computed over all comments (ignoring sort/filter)
-        agg = Comment.objects.filter(product_id=product_id).aggregate(
+        # Summary computed over approved comments only
+        agg = Comment.objects.filter(product_id=product_id, is_approved=True).aggregate(
             avg=Avg('star'),
             total=Count('id'),
             s1=Count(Case(When(star=1, then=1), output_field=IntegerField())),

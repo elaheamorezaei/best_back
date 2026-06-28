@@ -14,7 +14,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['id', 'userName', 'star', 'text', 'date', 'likes', 'dislikes', 'userVote', 'images']
+        fields = ['id', 'userName', 'star', 'title', 'text', 'pros', 'cons', 'date', 'likes', 'dislikes', 'userVote', 'images']
 
     def get_userName(self, obj):
         return obj.user.get_full_name() or obj.user.username
@@ -43,10 +43,13 @@ class CommentSerializer(serializers.ModelSerializer):
 class CommentCreateSerializer(serializers.ModelSerializer):
     star = serializers.IntegerField(min_value=1, max_value=5)
     text = serializers.CharField(min_length=10, max_length=2000)
+    title = serializers.CharField(max_length=300, required=False, allow_blank=True)
+    pros = serializers.ListField(child=serializers.CharField(max_length=200), required=False, default=list)
+    cons = serializers.ListField(child=serializers.CharField(max_length=200), required=False, default=list)
 
     class Meta:
         model = Comment
-        fields = ['star', 'text']
+        fields = ['star', 'text', 'title', 'pros', 'cons']
 
 
 class AnswerSerializer(serializers.ModelSerializer):
