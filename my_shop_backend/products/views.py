@@ -25,6 +25,15 @@ class ProductViewSet(viewsets.ModelViewSet):
     filterset_fields = ['category']
     search_fields = ['name']
 
+    def get_serializer_class(self):
+        # لیست محصولات (همون‌جایی که صفحه‌ی مقایسه و بقیه‌ی نمای عمومی
+        # سایت ازش می‌خونن) باید سبک و بدون فیلدهای حساس (stock, costPrice,
+        # sku, ...) باشه. جزئیات تکی محصول همچنان از سریالایزر کامل استفاده
+        # می‌کنه.
+        if self.action == 'list':
+            return ProductCardSerializer
+        return ProductSerializer
+
     def get_queryset(self):
         if self.action == 'retrieve':
             return Product.objects.select_related(
@@ -33,7 +42,18 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'images', 'colors', 'warranties',
                 'features', 'specs', 'intro_paragraphs', 'comments',
             )
-        return Product.objects.all()
+        return Product.objects.filter(is_active=True).select_related(
+            'category__parent__parent'
+        ).order_by('-id')
+
+    def paginate_queryset(self, queryset):
+        # برای لیست، صفحه‌بندی رو کامل غیرفعال می‌کنیم تا همه‌ی محصولات
+        # فعال یک‌جا برگردن (نه فقط صفحه‌ی اول) — دقیقاً همون چیزی که برای
+        # مودال «افزودن به مقایسه» لازمه. برگردوندن None یعنی DRF کل
+        # queryset رو بدون صفحه‌بندی سریالایز می‌کنه.
+        if self.action == 'list':
+            return None
+        return super().paginate_queryset(queryset)
 
     def retrieve(self, request, *args, **kwargs):
         try:
@@ -59,33 +79,52 @@ class FeaturedProductsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        products = Product.objects.filter(is_featured=True).select_related('category')
+        products = Product.objects.filter(is_featured=True).select_related('category__parent__parent')
         serializer = ProductCardSerializer(
             products, many=True, context={'request': request}
         )
         return success_response(serializer.data)
 
 
-class BestSellersView(APIView):
+# دو بخش صفحه‌ی اصلی («پرفروش‌ترین محصولات» و «محبوب‌ترین») دیگه معنای ثابتی
+# ندارند؛ به‌جاش هر بار که این endpoint صدا زده بشه، ۲ تا از همین ۳ وضعیت
+# واقعی و از قبل موجود در ادمین (بدون شمردن "فعال" که فقط یعنی قابل‌نمایش
+# بودنه) به‌صورت تصادفی و بدون تکرار انتخاب می‌شن، و محصولات همون دو وضعیت
+# برگردونده می‌شه.
+HIGHLIGHT_FLAGS = [
+    ('is_featured', 'محصولات ویژه'),
+    ('is_new', 'محصولات جدید'),
+    ('is_sale', 'محصولات حراجی'),
+]
+
+
+class HomeHighlightSectionsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        products = Product.objects.filter(is_best_seller=True).select_related('category')
-        serializer = ProductCardSerializer(
-            products, many=True, context={'request': request}
-        )
-        return success_response(serializer.data)
+        try:
+            limit = max(1, min(20, int(request.query_params.get('limit', 8))))
+        except (ValueError, TypeError):
+            limit = 8
 
+        import random
+        chosen = random.sample(HIGHLIGHT_FLAGS, 2)
 
-class MostPopularView(APIView):
-    permission_classes = [AllowAny]
+        sections = []
+        for flag_field, label in chosen:
+            qs = (
+                Product.objects
+                .filter(is_active=True, **{flag_field: True})
+                .select_related('category__parent__parent')[:limit]
+            )
+            serializer = ProductCardSerializer(qs, many=True, context={'request': request})
+            sections.append({
+                'flag': flag_field,
+                'title': label,
+                'products': serializer.data,
+            })
 
-    def get(self, request):
-        products = Product.objects.filter(is_popular=True).select_related('category')
-        serializer = ProductCardSerializer(
-            products, many=True, context={'request': request}
-        )
-        return success_response(serializer.data)
+        return success_response({'sections': sections})
 
 
 class SimilarProductsView(APIView):

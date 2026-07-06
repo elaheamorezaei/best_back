@@ -1,10 +1,13 @@
 import json
+from urllib.parse import urlparse
+
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from admin_api.permissions import IsAdminUser
-from products.models import Product, Category
+from products.models import Product, Category, ProductImage
 from core.responses import build_absolute_image_url
 
 
@@ -55,6 +58,69 @@ def _serialize_product(product, request):
         'salesCount': product.sales_count,
         'createdAt': product.created_at.isoformat(),
     }
+
+
+def _relative_media_path(url):
+    """
+    ورودی می‌تونه یک URL کامل باشه (مثل خروجی endpoint آپلود:
+    http://localhost:8000/media/products/abc.jpg) یا از قبل یک مسیر نسبی.
+    خروجی همیشه مسیر نسبی‌ای‌ست که ImageField انتظارش رو داره
+    (مثل 'products/abc.jpg'), بدون دامنه و بدون پیشوند MEDIA_URL.
+    """
+    if not url:
+        return ''
+    path = urlparse(url).path or url
+    media_url = settings.MEDIA_URL or '/media/'
+    if path.startswith(media_url):
+        path = path[len(media_url):]
+    return path.lstrip('/')
+
+
+def _sync_product_images(product, images_data):
+    """
+    آرایه‌ی images (لیستی از dict با کلیدهای id, url, order, ...) که از
+    فرانت می‌رسه رو با رکوردهای واقعی ProductImage هماهنگ می‌کنه:
+    - آیتم‌هایی که id دارن و از قبل وجود دارن → فقط order به‌روزرسانی می‌شه
+    - آیتم‌های جدید (بدون id، یا id نامعتبر) → یک ProductImage جدید ساخته می‌شه
+      و image به مسیر نسبیِ فایلِ از قبل آپلودشده وصل می‌شه
+    - رکوردهایی که دیگه در لیست جدید نیستن → حذف می‌شن (هم رکورد هم فایل)
+    """
+    if isinstance(images_data, str):
+        try:
+            images_data = json.loads(images_data)
+        except Exception:
+            images_data = []
+    if not isinstance(images_data, list):
+        images_data = []
+
+    existing_by_id = {img.id: img for img in product.images.all()}
+    keep_ids = set()
+
+    for order, item in enumerate(images_data):
+        if not isinstance(item, dict):
+            continue
+        img_id = item.get('id')
+        url = item.get('url', '')
+
+        if img_id in existing_by_id:
+            pi = existing_by_id[img_id]
+            if pi.order != order:
+                pi.order = order
+                pi.save(update_fields=['order'])
+            keep_ids.add(img_id)
+        else:
+            rel_path = _relative_media_path(url)
+            if not rel_path:
+                continue
+            pi = ProductImage.objects.create(
+                product=product, image=rel_path, order=order
+            )
+            keep_ids.add(pi.id)
+
+    for img_id, pi in existing_by_id.items():
+        if img_id not in keep_ids:
+            pi.image.delete(save=False)
+            pi.delete()
 
 
 class AdminProductListView(APIView):
@@ -160,6 +226,9 @@ class AdminProductListView(APIView):
             product.image = request.FILES['image']
             product.save(update_fields=['image'])
 
+        if 'images' in data:
+            _sync_product_images(product, data['images'])
+
         product.refresh_from_db()
         return Response(_serialize_product(product, request), status=201)
 
@@ -232,6 +301,11 @@ class AdminProductDetailView(APIView):
 
         if update_fields:
             product.save(update_fields=update_fields)
+
+        # گالری تصاویر (ProductImage) یک رابطه‌ی جداست، پس مستقل از
+        # update_fields بالا، اینجا با رکوردهای واقعی هماهنگ می‌شه.
+        if 'images' in data:
+            _sync_product_images(product, data['images'])
 
         product.refresh_from_db()
         return Response(_serialize_product(product, request))

@@ -46,13 +46,33 @@ class ProductCardSerializer(serializers.ModelSerializer):
     final_price = serializers.IntegerField(read_only=True)
     price = serializers.IntegerField()
     star = serializers.FloatField()
+    categoryId = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
-        fields = ['id', 'slug', 'image', 'name', 'model', 'star', 'price', 'off', 'final_price']
+        fields = ['id', 'slug', 'image', 'name', 'model', 'star', 'price', 'off', 'final_price', 'categoryId']
+
+    def get_categoryId(self, obj):
+        # تب‌های فیلتر دسته‌بندی فقط دسته‌های اصلی (is_main=True) رو نشون
+        # می‌دن، ولی محصول ممکنه توی یک زیردسته باشه (مثلاً "AirPods" زیر
+        # "صوتی و تصویری"). برای اینکه فیلتر کار کنه، اینجا به‌جای category
+        # مستقیم محصول، از زنجیره‌ی parent بالا می‌ریم تا به دسته‌ی
+        # ریشه/اصلی برسیم و همون id رو برمی‌گردونیم.
+        category = obj.category
+        while category and category.parent_id:
+            category = category.parent
+        return category.id if category else None
 
     def get_image(self, obj):
-        return build_absolute_image_url(self.context.get('request'), obj.image)
+        request = self.context.get('request')
+        # اول گالری واقعی محصول (ProductImage) رو چک می‌کنیم؛ محصولاتی که از
+        # فرم ادمین ساخته می‌شن فقط همین رابطه رو پر می‌کنن، نه فیلد تکی و
+        # قدیمی product.image. اگه گالری خالی بود (محصولات قدیمی‌تر)، به همون
+        # فیلد قدیمی fallback می‌کنیم تا چیزی خراب نشه.
+        first_img = obj.images.first()
+        if first_img:
+            return build_absolute_image_url(request, first_img.image)
+        return build_absolute_image_url(request, obj.image)
 
 
 # ─── Product detail (full product page) ──────────────────────────────────────
@@ -84,10 +104,14 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 
     def get_images(self, obj):
         request = self.context.get('request')
-        return [
+        images = [
             build_absolute_image_url(request, img.image)
             for img in obj.images.all()
         ]
+        # fallback برای محصولاتی که هنوز گالری ندارن ولی فیلد تکی قدیمی پر شده
+        if not images and obj.image:
+            images = [build_absolute_image_url(request, obj.image)]
+        return images
 
     def get_colors(self, obj):
         return [{'name': c.name, 'hex': c.hex} for c in obj.colors.all()]

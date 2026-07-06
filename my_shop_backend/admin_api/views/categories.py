@@ -23,6 +23,17 @@ def _serialize_category(cat, request):
     }
 
 
+def _collect_with_descendants(cat):
+    """
+    شناسه‌ی این دسته + همه‌ی زیردسته‌ها (در هر عمق) را برمی‌گرداند، تا هنگام
+    حذف، کل زیردرخت با هم پاک شود (نه اینکه فقط parent آن‌ها خالی بماند).
+    """
+    ids = [cat.id]
+    for child in cat.children.all():
+        ids.extend(_collect_with_descendants(child))
+    return ids
+
+
 class AdminCategoryListView(APIView):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -158,9 +169,8 @@ class AdminCategoryDetailView(APIView):
         cat = self._get(pk)
         if not cat:
             return Response({'error': {'message': 'دسته‌بندی یافت نشد', 'code': 'NOT_FOUND'}}, status=404)
-        if cat.children.exists() or cat.products.exists():
-            return Response({'error': {'message': 'دسته دارای زیرمجموعه یا محصول است', 'code': 'HAS_CHILDREN'}}, status=409)
-        cat.delete()
+        ids_to_delete = _collect_with_descendants(cat)
+        Category.objects.filter(pk__in=ids_to_delete).delete()
         return Response(status=204)
 
 

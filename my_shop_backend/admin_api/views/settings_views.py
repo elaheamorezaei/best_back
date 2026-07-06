@@ -1,6 +1,7 @@
 import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from admin_api.permissions import IsAdminUser
@@ -9,8 +10,16 @@ from core.responses import build_absolute_image_url
 
 
 class AdminSiteSettingsView(APIView):
-    permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        # خواندن تنظیمات سایت باید برای همه (فوتر، متادیتای صفحات و ...)
+        # آزاد باشه؛ فقط ویرایش (PATCH) مخصوص ادمینه. قبلاً کل ویو پشت
+        # IsAdminUser بود، پس هیچ صفحه‌ی عمومی سایت نمی‌تونست این تنظیمات
+        # رو بخونه و همیشه 401 می‌گرفت.
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAdminUser()]
 
     def get(self, request):
         s = SiteSettings.get()
@@ -79,7 +88,12 @@ class AdminSiteSettingsView(APIView):
 
 
 class AdminThemeSettingsView(APIView):
-    permission_classes = [IsAdminUser]
+    def get_permissions(self):
+        # همون منطق: خوندن تم (برای CSS variables صفحه‌ی اصلی) باید عمومی
+        # باشه؛ فقط تغییرش (PUT) مخصوص ادمینه.
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAdminUser()]
 
     def get(self, request):
         t = ThemeSettings.get()
@@ -148,6 +162,9 @@ class AdminSEOSettingsView(APIView):
             except Exception:
                 keywords = []
 
+        no_index_raw = data.get('noIndex', False)
+        no_index = str(no_index_raw).lower() not in ('false', '0', '')
+
         page_obj, _ = SEOPageSettings.objects.update_or_create(
             path=path,
             defaults={
@@ -156,7 +173,7 @@ class AdminSEOSettingsView(APIView):
                 'meta_description': data.get('metaDescription', ''),
                 'keywords': keywords,
                 'og_image': data.get('ogImage', ''),
-                'no_index': bool(data.get('noIndex', False)),
+                'no_index': no_index,
             }
         )
 
