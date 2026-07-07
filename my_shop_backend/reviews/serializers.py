@@ -99,8 +99,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         return len(obj.answers.all())
 
     def get_answers(self, obj):
-        first_two = list(obj.answers.all())[:2]
-        return AnswerSerializer(first_two, many=True, context=self.context).data
+        return AnswerSerializer(obj.answers.all(), many=True, context=self.context).data
 
 
 class QuestionCreateSerializer(serializers.ModelSerializer):

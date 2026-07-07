@@ -1,9 +1,15 @@
 import math
 from django.db.models import Avg, Count, Case, When, IntegerField
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from core.responses import data_response, error_detail_response
+
+
+def _validation_error(serializer_errors):
+    errors = {field: str(msgs[0]) for field, msgs in serializer_errors.items()}
+    return Response({"message": "خطا در اطلاعات ارسالی", "errors": errors}, status=400)
 from products.models import Product
 from .models import Comment, CommentVote, Question, Answer, AnswerVote
 from .serializers import (
@@ -108,13 +114,15 @@ class CommentsView(APIView):
 
         serializer = CommentCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            first_field = next(iter(serializer.errors))
-            msg = str(serializer.errors[first_field][0])
-            return error_detail_response('VALIDATION_ERROR', msg, field=first_field, http_status=400)
+            return _validation_error(serializer.errors)
 
         comment = serializer.save(product=product, user=request.user)
         out = CommentSerializer(comment, context={'request': request})
-        return data_response(out.data, message="نظر شما با موفقیت ثبت شد", status=201)
+        return data_response(
+            out.data,
+            message="نظر شما با موفقیت ثبت شد و پس از تأیید نمایش داده می‌شود.",
+            status=201,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -200,13 +208,11 @@ class QuestionsView(APIView):
 
         serializer = QuestionCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            first_field = next(iter(serializer.errors))
-            msg = str(serializer.errors[first_field][0])
-            return error_detail_response('VALIDATION_ERROR', msg, field=first_field, http_status=400)
+            return _validation_error(serializer.errors)
 
         question = serializer.save(product=product, user=request.user)
         out = QuestionSerializer(question, context={'request': request})
-        return data_response(out.data, message="سوال شما با موفقیت ثبت شد", status=201)
+        return data_response(out.data, message="پرسش شما با موفقیت ثبت شد.", status=201)
 
 
 # ---------------------------------------------------------------------------
@@ -223,13 +229,11 @@ class AnswersView(APIView):
 
         serializer = AnswerCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            first_field = next(iter(serializer.errors))
-            msg = str(serializer.errors[first_field][0])
-            return error_detail_response('VALIDATION_ERROR', msg, field=first_field, http_status=400)
+            return _validation_error(serializer.errors)
 
         answer = serializer.save(question=question, user=request.user)
         out = AnswerSerializer(answer, context={'request': request})
-        return data_response(out.data, message="پاسخ شما با موفقیت ثبت شد", status=201)
+        return data_response(out.data, message="پاسخ شما با موفقیت ثبت شد.", status=201)
 
 
 # ---------------------------------------------------------------------------
