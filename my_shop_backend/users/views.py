@@ -168,7 +168,7 @@ class OTPVerifyView(APIView):
         phone = serializer.validated_data['phoneNumber']
         code = serializer.validated_data['code']
 
-        if not (settings.DEBUG and code == '1234'):
+        if not (settings.DEBUG and code == '12345'):
             otp = OTPCode.objects.filter(
                 phone_number=phone, purpose=OTPCode.PURPOSE_LOGIN, is_used=False
             ).first()

@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'terms.apps.TermsConfig',
     'compare.apps.CompareConfig',
     'admin_api.apps.AdminApiConfig',
+    'franchise.apps.FranchiseConfig',
 ]
 
 MIDDLEWARE = [

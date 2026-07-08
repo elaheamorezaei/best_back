@@ -52,6 +52,10 @@ from admin_api.views.reports import (
     AdminReportSalesView, AdminReportProductsView, AdminReportOrdersView,
 )
 from admin_api.views.upload import AdminUploadView
+from admin_api.views.franchise import (
+    AdminFranchiseListView, AdminFranchiseDetailView,
+    AdminFranchiseApproveView, AdminFranchiseRejectView,
+)
 
 urlpatterns = [
     # Auth
@@ -145,4 +149,10 @@ urlpatterns = [
 
     # Upload
     path('admin/upload/', AdminUploadView.as_view()),
+
+    # Franchise
+    path('admin/franchise/', AdminFranchiseListView.as_view()),
+    path('admin/franchise/<int:pk>/', AdminFranchiseDetailView.as_view()),
+    path('admin/franchise/<int:pk>/approve/', AdminFranchiseApproveView.as_view()),
+    path('admin/franchise/<int:pk>/reject/', AdminFranchiseRejectView.as_view()),
 ]
