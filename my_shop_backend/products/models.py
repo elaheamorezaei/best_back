@@ -32,7 +32,7 @@ class Product(models.Model):
     model = models.CharField(max_length=200, blank=True)
     brand = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)
-    short_description = models.CharField(max_length=500, blank=True)
+    short_description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2)
     compare_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cost_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -78,7 +78,7 @@ class ProductImage(models.Model):
 class ProductColor(models.Model):
     product = models.ForeignKey(Product, related_name='colors', on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
-    hex = models.CharField(max_length=7)
+    hex = models.CharField(max_length=50)
     is_default = models.BooleanField(default=False)
 
     def __str__(self):

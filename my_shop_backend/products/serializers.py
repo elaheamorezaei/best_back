@@ -79,6 +79,9 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
+    model = serializers.SerializerMethodField()
+    off = serializers.SerializerMethodField()
+    shortDescription = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     warranties = serializers.SerializerMethodField()
     features = serializers.SerializerMethodField()
@@ -96,11 +99,22 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'slug', 'name', 'model', 'brand', 'short_description',
+            'id', 'slug', 'name', 'model', 'brand', 'shortDescription',
             'star', 'reviewCount', 'inStock', 'selectedColor', 'images',
             'price', 'off', 'colors', 'warranties', 'features', 'intro',
             'specs', 'review', 'isInWishlist', 'isNotifyRequested',
         ]
+
+    def get_model(self, obj):
+        return obj.sku or obj.model or ''
+
+    def get_off(self, obj):
+        if obj.compare_price and obj.compare_price > obj.price:
+            return round((obj.compare_price - obj.price) / obj.compare_price * 100)
+        return obj.off
+
+    def get_shortDescription(self, obj):
+        return obj.short_description
 
     def get_images(self, obj):
         request = self.context.get('request')
@@ -123,7 +137,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return [{'name': f.name, 'value': f.value} for f in obj.features.all()]
 
     def get_intro(self, obj):
-        return [p.text for p in obj.intro_paragraphs.all()]
+        paragraphs = list(obj.intro_paragraphs.all())
+        if paragraphs:
+            return [p.text for p in paragraphs]
+        return [line for line in obj.description.splitlines() if line.strip()]
 
     def get_specs(self, obj):
         return [{'name': s.name, 'value': s.value} for s in obj.specs.all()]

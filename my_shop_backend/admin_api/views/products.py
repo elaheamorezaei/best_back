@@ -2,12 +2,16 @@ import json
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db.models.deletion import ProtectedError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from admin_api.permissions import IsAdminUser
-from products.models import Product, Category, ProductImage
+from products.models import (
+    Product, Category, ProductImage,
+    ProductColor, ProductSpec, ProductFeature, ProductWarranty,
+)
 from core.responses import build_absolute_image_url
 
 
@@ -30,6 +34,14 @@ def _serialize_product(product, request):
         {'id': s.id, 'name': s.name, 'value': s.value, 'unit': None}
         for s in product.specs.all()
     ]
+    features = [
+        {'id': f.id, 'name': f.name, 'value': f.value}
+        for f in product.features.all()
+    ]
+    warranties = [
+        {'id': w.id, 'text': w.text}
+        for w in product.warranties.all()
+    ]
     return {
         'id': product.id,
         'name': product.name,
@@ -49,6 +61,8 @@ def _serialize_product(product, request):
         'images': images,
         'variants': colors,
         'attributes': specs,
+        'features': features,
+        'warranties': warranties,
         'isActive': product.is_active,
         'isFeatured': product.is_featured,
         'isNew': product.is_new,
@@ -123,12 +137,179 @@ def _sync_product_images(product, images_data):
             pi.delete()
 
 
+def _sync_variants(product, variants_data):
+    """variants از frontend = رنگ‌ها → ذخیره در ProductColor"""
+    if isinstance(variants_data, str):
+        try:
+            variants_data = json.loads(variants_data)
+        except Exception:
+            variants_data = []
+    if not isinstance(variants_data, list):
+        variants_data = []
+
+    existing_by_id = {c.id: c for c in ProductColor.objects.filter(product=product)}
+    keep_ids = set()
+
+    for item in variants_data:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get('id')
+        name = (item.get('name') or '').strip()
+        hex_val = (item.get('value') or '').strip()
+
+        if item_id and item_id in existing_by_id:
+            color = existing_by_id[item_id]
+            update = []
+            if name and color.name != name:
+                color.name = name
+                update.append('name')
+            if hex_val and color.hex != hex_val:
+                color.hex = hex_val
+                update.append('hex')
+            if update:
+                color.save(update_fields=update)
+            keep_ids.add(item_id)
+        else:
+            if name:
+                color = ProductColor.objects.create(product=product, name=name, hex=hex_val or '')
+                keep_ids.add(color.id)
+
+    for cid, color in existing_by_id.items():
+        if cid not in keep_ids:
+            color.delete()
+
+
+def _sync_attributes(product, attributes_data):
+    """attributes از frontend = ویژگی‌ها → ذخیره در ProductSpec"""
+    if isinstance(attributes_data, str):
+        try:
+            attributes_data = json.loads(attributes_data)
+        except Exception:
+            attributes_data = []
+    if not isinstance(attributes_data, list):
+        attributes_data = []
+
+    existing_by_id = {s.id: s for s in ProductSpec.objects.filter(product=product)}
+    keep_ids = set()
+
+    for order, item in enumerate(attributes_data):
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get('id')
+        name = (item.get('name') or '').strip()
+        value = (item.get('value') or '').strip()
+
+        if item_id and item_id in existing_by_id:
+            spec = existing_by_id[item_id]
+            update = []
+            if name and spec.name != name:
+                spec.name = name
+                update.append('name')
+            if spec.value != value:
+                spec.value = value
+                update.append('value')
+            if spec.order != order:
+                spec.order = order
+                update.append('order')
+            if update:
+                spec.save(update_fields=update)
+            keep_ids.add(item_id)
+        else:
+            if name:
+                spec = ProductSpec.objects.create(product=product, name=name, value=value, order=order)
+                keep_ids.add(spec.id)
+
+    for sid, spec in existing_by_id.items():
+        if sid not in keep_ids:
+            spec.delete()
+
+
+def _sync_features(product, features_data):
+    if isinstance(features_data, str):
+        try:
+            features_data = json.loads(features_data)
+        except Exception:
+            features_data = []
+    if not isinstance(features_data, list):
+        features_data = []
+
+    existing_by_id = {f.id: f for f in ProductFeature.objects.filter(product=product)}
+    keep_ids = set()
+
+    for order, item in enumerate(features_data):
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get('id')
+        name = (item.get('name') or '').strip()
+        value = (item.get('value') or '').strip()
+
+        if item_id and item_id in existing_by_id:
+            feat = existing_by_id[item_id]
+            update = []
+            if name and feat.name != name:
+                feat.name = name
+                update.append('name')
+            if feat.value != value:
+                feat.value = value
+                update.append('value')
+            if feat.order != order:
+                feat.order = order
+                update.append('order')
+            if update:
+                feat.save(update_fields=update)
+            keep_ids.add(item_id)
+        else:
+            if name:
+                feat = ProductFeature.objects.create(product=product, name=name, value=value, order=order)
+                keep_ids.add(feat.id)
+
+    for fid, feat in existing_by_id.items():
+        if fid not in keep_ids:
+            feat.delete()
+
+
+def _sync_warranties(product, warranties_data):
+    if isinstance(warranties_data, str):
+        try:
+            warranties_data = json.loads(warranties_data)
+        except Exception:
+            warranties_data = []
+    if not isinstance(warranties_data, list):
+        warranties_data = []
+
+    existing_by_id = {w.id: w for w in ProductWarranty.objects.filter(product=product)}
+    keep_ids = set()
+
+    for order, item in enumerate(warranties_data):
+        if isinstance(item, str):
+            item = {'text': item}
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get('id')
+        text = (item.get('text') or '').strip()
+
+        if item_id and item_id in existing_by_id:
+            war = existing_by_id[item_id]
+            if text and war.text != text:
+                war.text = text
+                war.save(update_fields=['text'])
+            keep_ids.add(item_id)
+        else:
+            if text:
+                war = ProductWarranty.objects.create(product=product, text=text, order=order)
+                keep_ids.add(war.id)
+
+    for wid, war in existing_by_id.items():
+        if wid not in keep_ids:
+            war.delete()
+
+
 class AdminProductListView(APIView):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        qs = Product.objects.select_related('category').prefetch_related('images', 'colors', 'specs', 'comments')
+        qs = Product.objects.select_related('category').prefetch_related('images', 'colors', 'specs', 'features', 'warranties', 'comments')
 
         search = request.query_params.get('search', '').strip()
         if search:
@@ -228,8 +409,18 @@ class AdminProductListView(APIView):
 
         if 'images' in data:
             _sync_product_images(product, data['images'])
+        if 'variants' in data:
+            _sync_variants(product, data['variants'])
+        if 'attributes' in data:
+            _sync_attributes(product, data['attributes'])
+        if 'features' in data:
+            _sync_features(product, data['features'])
+        if 'warranties' in data:
+            _sync_warranties(product, data['warranties'])
 
-        product.refresh_from_db()
+        product = Product.objects.select_related('category').prefetch_related(
+            'images', 'colors', 'specs', 'features', 'warranties', 'comments'
+        ).get(pk=product.pk)
         return Response(_serialize_product(product, request), status=201)
 
 
@@ -239,7 +430,7 @@ class AdminProductDetailView(APIView):
 
     def _get(self, pk):
         try:
-            return Product.objects.select_related('category').prefetch_related('images', 'colors', 'specs', 'comments').get(pk=pk)
+            return Product.objects.select_related('category').prefetch_related('images', 'colors', 'specs', 'features', 'warranties', 'comments').get(pk=pk)
         except Product.DoesNotExist:
             return None
 
@@ -306,15 +497,31 @@ class AdminProductDetailView(APIView):
         # update_fields بالا، اینجا با رکوردهای واقعی هماهنگ می‌شه.
         if 'images' in data:
             _sync_product_images(product, data['images'])
+        if 'variants' in data:
+            _sync_variants(product, data['variants'])
+        if 'attributes' in data:
+            _sync_attributes(product, data['attributes'])
+        if 'features' in data:
+            _sync_features(product, data['features'])
+        if 'warranties' in data:
+            _sync_warranties(product, data['warranties'])
 
-        product.refresh_from_db()
+        product = Product.objects.select_related('category').prefetch_related(
+            'images', 'colors', 'specs', 'features', 'warranties', 'comments'
+        ).get(pk=product.pk)
         return Response(_serialize_product(product, request))
 
     def delete(self, request, pk):
         product = self._get(pk)
         if not product:
             return Response({'error': {'message': 'محصول یافت نشد', 'code': 'NOT_FOUND'}}, status=404)
-        product.delete()
+        try:
+            product.delete()
+        except ProtectedError:
+            return Response(
+                {'error': {'message': 'این محصول در سفارشات ثبت‌شده استفاده شده و قابل حذف نیست', 'code': 'PRODUCT_IN_USE'}},
+                status=409,
+            )
         return Response(status=204)
 
 
@@ -351,5 +558,14 @@ class AdminProductBulkDeleteView(APIView):
         ids = request.data.get('ids', [])
         if not ids:
             return Response({'error': {'message': 'ids الزامی است', 'code': 'MISSING_IDS'}}, status=400)
-        deleted, _ = Product.objects.filter(pk__in=ids).delete()
-        return Response({'deleted': deleted})
+
+        skipped = []
+        deleted = 0
+        for pid in ids:
+            try:
+                count, _ = Product.objects.filter(pk=pid).delete()
+                deleted += count
+            except ProtectedError:
+                skipped.append(pid)
+
+        return Response({'deleted': deleted, 'skipped': skipped})

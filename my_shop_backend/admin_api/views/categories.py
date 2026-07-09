@@ -1,3 +1,4 @@
+from django.db.models.deletion import ProtectedError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -170,7 +171,13 @@ class AdminCategoryDetailView(APIView):
         if not cat:
             return Response({'error': {'message': 'دسته‌بندی یافت نشد', 'code': 'NOT_FOUND'}}, status=404)
         ids_to_delete = _collect_with_descendants(cat)
-        Category.objects.filter(pk__in=ids_to_delete).delete()
+        try:
+            Category.objects.filter(pk__in=ids_to_delete).delete()
+        except ProtectedError:
+            return Response(
+                {'error': {'message': 'این دسته‌بندی دارای محصولاتی است که در سفارشات ثبت‌شده استفاده شده‌اند و قابل حذف نیست', 'code': 'CATEGORY_IN_USE'}},
+                status=409,
+            )
         return Response(status=204)
 
 
